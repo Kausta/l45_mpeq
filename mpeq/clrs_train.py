@@ -29,6 +29,8 @@ import numpy as np
 import requests
 import tensorflow as tf
 
+from mpeq import model
+
 
 flags.DEFINE_list('algorithms', ['bfs'], 'Which algorithms to run.')
 flags.DEFINE_list('train_lengths', ['4', '7', '11', '13', '16'],
@@ -72,6 +74,8 @@ flags.DEFINE_float('hint_teacher_forcing', 0.0,
                    'Probability that ground-truth teacher hints are encoded '
                    'during training instead of predicted hints. Only '
                    'pertinent in encoded_decoded modes.')
+flags.DEFINE_float('l1_weight', 0.1,
+                   'L1 regularization weight.')
 flags.DEFINE_enum('hint_mode', 'encoded_decoded',
                   ['encoded_decoded', 'decoded_only', 'none'],
                   'How should hints be used? Note, each mode defines a '
@@ -104,12 +108,8 @@ flags.DEFINE_integer('nb_triplet_fts', 8,
 flags.DEFINE_enum('encoder_init', 'xavier_on_scalars',
                   ['default', 'xavier_on_scalars'],
                   'Initialiser to use for the encoders.')
-flags.DEFINE_enum('processor_type', 'triplet_gmpnn',
-                  ['deepsets', 'mpnn', 'pgn', 'pgn_mask',
-                   'triplet_mpnn', 'triplet_pgn', 'triplet_pgn_mask',
-                   'gat', 'gatv2', 'gat_full', 'gatv2_full',
-                   'gpgn', 'gpgn_mask', 'gmpnn',
-                   'triplet_gpgn', 'triplet_gpgn_mask', 'triplet_gmpnn'],
+flags.DEFINE_enum('processor_type', 'pgn_with_msg',
+                  ['pgn_with_msg'],
                   'Processor type to use as the network P.')
 
 flags.DEFINE_string('checkpoint_path', '/tmp/CLRS30',
@@ -261,7 +261,8 @@ def collect_and_eval(sampler, predict_fn, sample_count, rng_key, extras):
         batch_size = feedback.outputs[0].data.shape[0]
         outputs.append(feedback.outputs)
         new_rng_key, rng_key = jax.random.split(rng_key)
-        cur_preds, _ = predict_fn(new_rng_key, feedback.features)
+        # TODO: Can take messages here if required
+        cur_preds, _, _ = predict_fn(new_rng_key, feedback.features)
         preds.append(cur_preds)
         processed_samples += batch_size
     outputs = _concat(outputs, axis=0)
@@ -387,7 +388,7 @@ def main(unused_argv):
      test_samplers, test_sample_counts,
      spec_list) = create_samplers(rng, train_lengths)
 
-    processor_factory = clrs.get_processor_factory(
+    processor_factory = model.get_processor_factory(
         FLAGS.processor_type,
         use_ln=FLAGS.use_ln,
         nb_triplet_fts=FLAGS.nb_triplet_fts,
@@ -408,9 +409,10 @@ def main(unused_argv):
         hint_teacher_forcing=FLAGS.hint_teacher_forcing,
         hint_repred_mode=FLAGS.hint_repred_mode,
         nb_msg_passing_steps=FLAGS.nb_msg_passing_steps,
+        l1_weight=FLAGS.l1_weight
     )
 
-    eval_model = clrs.models.BaselineModel(
+    eval_model = model.BaselineMsgModel(
         spec=spec_list,
         dummy_trajectory=[next(t) for t in val_samplers],
         **model_params
