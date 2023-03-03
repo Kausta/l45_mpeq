@@ -27,10 +27,12 @@ import numpy as np
 import requests
 import tensorflow as tf
 
-import json
+# import json
 
 # from mpeq import model
 import model
+# from mpeq import flags
+import flags
 
 class dotdict(dict):
     """dot.notation access to dictionary attributes"""
@@ -38,9 +40,11 @@ class dotdict(dict):
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__
 
-# with open("mpeq/clrs_train_config.json", "r") as f:
-with open("clrs_train_config.json", "r") as f:
-    FLAGS = dotdict(json.load(f))
+# # with open("mpeq/clrs_train_config.json", "r") as f:
+# with open("clrs_train_config.json", "r") as f:
+#     FLAGS = dotdict(json.load(f))
+
+FLAGS = dotdict(flags.FLAGS)
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
