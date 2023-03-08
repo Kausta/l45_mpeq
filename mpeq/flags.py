@@ -1,36 +1,11 @@
-FLAGS = {
-	'logtostderr': False,
-	'alsologtostderr': False,
-	'log_dir': '',
-	'v': -1,
-	'verbosity': -1,
-	'logger_levels': {},
-	'stderrthreshold': 'fatal',
-	'showprefixforinfo': True,
-	'run_with_pdb': False,
-	'pdb_post_mortem': False,
-	'pdb': False,
-	'run_with_profiling': False,
-	'profile_file': None,
-	'use_cprofile_for_profiling': True,
-	'only_check_args': False,
-	'chex_n_cpu_devices': 1,
-	'chex_assert_multiple_cpu_devices': False,
-	'test_srcdir': '',
-	'test_tmpdir': '/var/folders/p_/7bwq51cs75b7z4303kbgjbg40000gn/T/absl_testing',
-	'test_random_seed': 301,
-	'test_randomize_ordering_seed': '',
-	'xml_output_file': '',
-	'chex_skip_pmap_variant_if_single_device': True,
-	'op_conversion_fallback_to_while_loop': True,
-	'runtime_oom_exit': True,
-	'hbm_oom_exit': True,
-	'delta_threshold': 0.5,
-	'tt_check_filter': False,
-	'tt_single_core_summaries': False,
-	'tfds_debug_list_dir': False,
-	'wikipedia_auto_select_flume_mode': True,
-	'algorithms': ['bfs'],
+class dotdict(dict):
+    """dot.notation access to dictionary attributes"""
+    __getattr__ = dict.get
+    __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__
+
+FLAGS_dict = {
+	'algorithms': ['binary_search'],
 	'train_lengths': ['4', '7', '11', '13', '16'],
 	'length_needle': -8,
 	'seed': 42,
@@ -40,9 +15,9 @@ FLAGS = {
 	'batch_size': 32,
 	'chunked_training': False,
 	'chunk_length': 16,
-	'train_steps': 10000,
+	'train_steps': 400,
 	'eval_every': 50,
-	'test_every': 500,
+	'test_every': 100,
 	'hidden_size': 128,
 	'nb_heads': 1,
 	'nb_msg_passing_steps': 1,
@@ -62,3 +37,5 @@ FLAGS = {
 	'dataset_path': '/tmp/CLRS30',
 	'freeze_processor': False,
 }
+
+FLAGS = dotdict(FLAGS_dict)
