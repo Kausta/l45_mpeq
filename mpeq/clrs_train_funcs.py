@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 import logging
 import clrs
 import jax
+import jax.numpy as jnp
 import numpy as np
 import requests
 import tensorflow as tf
@@ -169,20 +170,32 @@ def collect_and_eval(sampler, predict_fn, sample_count, rng_key, extras):
     return {k: unpack(v) for k, v in out.items()}
 
 
-def get_msgs(sampler, predict_fn, sample_count, rng_key):
+def get_msgs(sampler, predict_fn, sample_count, rng_key, sample_prob=0.001):
     """Get messages from model.
     
     CAUTION: size of msgs can get large very quickly, so beware when
         running with a large number of samples.
+    Use sample_prob to reduce the number of messages that are saved
+    by randomly sampling messages
     """
     processed_samples = 0
     msgs = []
     while processed_samples < sample_count:
-        print(processed_samples)
         feedback = next(sampler)
         batch_size = feedback.outputs[0].data.shape[0]
         new_rng_key, rng_key = jax.random.split(rng_key)
         _, _, cur_msgs = predict_fn(new_rng_key, feedback.features)
+        
+        cur_msgs = cur_msgs.reshape(-1, cur_msgs.shape[-1])
+        
+        new_rng_key, rng_key = jax.random.split(rng_key)
+        mask = jax.random.choice(new_rng_key,
+                                 a=jnp.array([False, True]),
+                                 shape=(cur_msgs.shape[0],),
+                                 p=jnp.array([1 - sample_prob, sample_prob]),
+                                 replace=True,)
+        cur_msgs = cur_msgs[mask]
+        
         msgs.append(cur_msgs)
         processed_samples += batch_size
     msgs = _concat(msgs, axis=0)
