@@ -25,7 +25,7 @@ FLAGS_dict = {
 	'grad_clip_max_norm': 1.0,
 	'dropout_prob': 0.0,
 	'hint_teacher_forcing': 0.0,
-	'l1_weight': 0.1,
+	'l1_weight': 0.001,
 	'hint_mode': 'encoded_decoded',
 	'hint_repred_mode': 'soft',
 	'use_ln': True,

@@ -141,7 +141,13 @@ class NetMsg(nets.Net):
             hint_preds=hint_preds if return_hints else None,
             output_preds=output_preds if return_all_outputs else None,
             hiddens=None, lstm_state=None, msgs=msgs_state)
-
+        
+        # ^ Note: could implement the following to save memory:
+        # if repred:
+        #     msgs = l1_norm(msgs_state)
+        # else:
+        #     msgs = msgs_state
+        
         # Complying to jax.scan, the first returned value is the state we carry over
         # the second value is the output that will be stacked over steps.
         return new_mp_state, accum_mp_state
@@ -274,13 +280,13 @@ class NetMsg(nets.Net):
         hint_preds = invert(accum_mp_state.hint_preds)
 
         all_msgs = accum_mp_state.msgs
-        # shape: (num_mp_steps, layers_per_hint = 1, num_samples, length, length, hidden_dim)
+        # shape: (num_steps, layers_per_hint = 1, num_samples, length, length, hidden_dim)
         
         # note: following only works when layers_per_hint = 1
         all_msgs = all_msgs.squeeze()
-        # shape: (num_mp_steps, num_samples, length, length, hidden_dim)
+        # shape: (num_steps, num_samples, length, length, hidden_dim)
         all_msgs = jnp.transpose(all_msgs, (1, 0, 2, 3, 4))
-        # shape: (num_samples, num_mp_steps, length, length, hidden_dim)
+        # shape: (num_samples, num_steps, length, length, hidden_dim)
 
         return output_preds, hint_preds, all_msgs
 

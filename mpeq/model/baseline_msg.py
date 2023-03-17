@@ -160,9 +160,14 @@ class BaselineMsgModel(baselines.BaselineModel):
                     nb_nodes=nb_nodes,
                 )
 
+        # old:
         # all_msgs.shape = (nlayers, nbatch, nnodes, nnodes, nmsg_dim)
-        total_loss += self.l1_weight * jnp.mean(
-            jnp.sum(jnp.abs(all_msgs), axis=(-2, -1))
-        )
+        
+        # all_msgs.shape = (num_samples, num_steps, length, length, hidden_dim)
+        # sum over all messages for a message passing step
+        # mean over other dimensions
+        total_loss += self.l1_weight * jnp.mean( 
+            jnp.sum(jnp.abs(all_msgs), axis=(-3, -2, -1))
+        )   
 
         return total_loss
