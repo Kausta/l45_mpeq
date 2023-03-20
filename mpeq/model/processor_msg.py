@@ -132,7 +132,13 @@ class PGNWithMsg(processors.PGN):
       gate = jax.nn.sigmoid(gate3(jax.nn.relu(gate1(z) + gate2(msgs))))
       ret = ret * gate + hidden * (1-gate)
 
-    return ret, tri_msgs, exported_msgs
+    
+    graph_fts_expanded = jnp.tile(jnp.expand_dims(graph_fts, axis=(1, 2)), reps=(1, n, n, 1))
+    node_1 = jnp.tile(jnp.expand_dims(node_fts, axis=1), reps=(1, n, 1, 1))
+    node_2 = jnp.tile(jnp.expand_dims(node_fts, axis=2), reps=(1, 1, n, 1))
+    msg_input = jnp.concatenate((node_1, node_2, edge_fts, graph_fts_expanded), axis=-1)
+
+    return ret, tri_msgs, exported_msgs, msg_input
 
 
 ProcessorFactory = Callable[[int], processors.Processor]
@@ -153,14 +159,16 @@ def get_processor_factory(kind: str,
     A callable that takes an `out_size` parameter (equal to the hidden
     dimension of the network) and returns a processor instance.
   """
-  def _factory(out_size: int):
+  def _factory(out_size: int, msg_size: int):
     if kind == 'pgn_with_msg':
       processor = PGNWithMsg(
           out_size=out_size,
-          msgs_mlp_sizes=[out_size, out_size],
+          # msgs_mlp_sizes=[out_size, out_size],
+          msgs_mlp_sizes=[msg_size, msg_size],
           use_ln=use_ln,
           use_triplets=False,
           nb_triplet_fts=0,
+          mid_size=msg_size
       )
     else:
       raise ValueError('Unexpected processor kind ' + kind)

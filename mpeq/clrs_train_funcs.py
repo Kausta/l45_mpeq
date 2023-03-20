@@ -159,7 +159,7 @@ def collect_and_eval(sampler, predict_fn, sample_count, rng_key, extras):
         new_rng_key, rng_key = jax.random.split(rng_key)
         # TODO: Can take messages here if required
         # see below
-        cur_preds, _, _ = predict_fn(new_rng_key, feedback.features)
+        cur_preds, _, _, _ = predict_fn(new_rng_key, feedback.features)
         preds.append(cur_preds)
         processed_samples += batch_size
     outputs = _concat(outputs, axis=0)
@@ -177,6 +177,9 @@ def get_msgs(sampler, predict_fn, sample_count, rng_key, sample_prob=0.001):
         running with a large number of samples.
     Use sample_prob to reduce the number of messages that are saved
     by randomly sampling messages
+    
+    Note: we can only perform symbolic regression on a maximum of
+    ~5000 messages anyways, so we can use sample_prob to get to this threshold
     """
     processed_samples = 0
     msgs = []
@@ -184,19 +187,21 @@ def get_msgs(sampler, predict_fn, sample_count, rng_key, sample_prob=0.001):
         feedback = next(sampler)
         batch_size = feedback.outputs[0].data.shape[0]
         new_rng_key, rng_key = jax.random.split(rng_key)
-        _, _, cur_msgs = predict_fn(new_rng_key, feedback.features)
+        _, _, cur_msgs, cur_input_msg = predict_fn(new_rng_key, feedback.features)
         
         cur_msgs = cur_msgs.reshape(-1, cur_msgs.shape[-1])
+        cur_input_msg = cur_input_msg.reshape(-1, cur_input_msg.shape[-1])
+        cur_msg_concat = jnp.concatenate((cur_msgs, cur_input_msg), axis=-1)
         
         new_rng_key, rng_key = jax.random.split(rng_key)
         mask = jax.random.choice(new_rng_key,
                                  a=jnp.array([False, True]),
-                                 shape=(cur_msgs.shape[0],),
+                                 shape=(cur_msg_concat.shape[0],),
                                  p=jnp.array([1 - sample_prob, sample_prob]),
                                  replace=True,)
-        cur_msgs = cur_msgs[mask]
+        cur_msg_concat = cur_msg_concat[mask]
         
-        msgs.append(cur_msgs)
+        msgs.append(cur_msg_concat)
         processed_samples += batch_size
     msgs = _concat(msgs, axis=0)
     

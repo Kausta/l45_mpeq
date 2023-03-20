@@ -25,12 +25,14 @@ class _MessagePassingWithMsgScanState:
     hiddens: chex.Array
     lstm_state: Optional[hk.LSTMState]
     msgs: chex.Array
+    msg_input: chex.Array
 
 
 class NetMsg(nets.Net):
     def __init__(self,
                  spec: List[nets._Spec],
                  hidden_dim: int,
+                 msg_dim: int,
                  encode_hints: bool,
                  decode_hints: bool,
                  processor_factory: processors.ProcessorFactory,
@@ -55,6 +57,8 @@ class NetMsg(nets.Net):
                          nb_dims=nb_dims,
                          nb_msg_passing_steps=nb_msg_passing_steps,
                          name=name)
+                         
+        self.msg_dim = msg_dim
 
     def _msg_passing_step(self,
                           mp_state: _MessagePassingWithMsgScanState,
@@ -115,7 +119,7 @@ class NetMsg(nets.Net):
                     probing.DataPoint(
                         name=hint.name, location=loc, type_=typ, data=hint_data))
 
-        hiddens, output_preds_cand, hint_preds, lstm_state, msgs_state = self._one_step_pred(
+        hiddens, output_preds_cand, hint_preds, lstm_state, msgs_state, input_msg_state = self._one_step_pred(
             inputs, cur_hint, mp_state.hiddens,
             batch_size, nb_nodes, mp_state.lstm_state,
             spec, encs, decs, repred)
@@ -135,18 +139,21 @@ class NetMsg(nets.Net):
             output_preds=output_preds,
             hiddens=hiddens,
             lstm_state=lstm_state,
-            msgs=msgs_state)
+            msgs=msgs_state,
+            msg_input=input_msg_state)
         # Save memory by not stacking unnecessary fields
         accum_mp_state = _MessagePassingWithMsgScanState(
             hint_preds=hint_preds if return_hints else None,
             output_preds=output_preds if return_all_outputs else None,
-            hiddens=None, lstm_state=None, msgs=msgs_state)
+            hiddens=None, lstm_state=None, msgs=msgs_state, msg_input=input_msg_state)
         
         # ^ Note: could implement the following to save memory:
         # if repred:
         #     msgs = l1_norm(msgs_state)
+        #     msg_input = None
         # else:
         #     msgs = msgs_state
+        #     msg_input = msg_input_state
         
         # Complying to jax.scan, the first returned value is the state we carry over
         # the second value is the output that will be stacked over steps.
@@ -191,7 +198,7 @@ class NetMsg(nets.Net):
         assert len(algorithm_indices) == len(features_list)
 
         self.encoders, self.decoders = self._construct_encoders_decoders()
-        self.processor = self.processor_factory(self.hidden_dim)
+        self.processor = self.processor_factory(self.hidden_dim, self.msg_dim)
 
         # Optionally construct LSTM.
         if self.use_lstm:
@@ -224,7 +231,8 @@ class NetMsg(nets.Net):
 
             mp_state = _MessagePassingWithMsgScanState(
                 hint_preds=None, output_preds=None,
-                hiddens=hiddens, lstm_state=lstm_state, msgs=None)
+                hiddens=hiddens, lstm_state=lstm_state,
+                msgs=None, msg_input=None)
 
             # Do the first step outside of the scan because it has a different
             # computation graph.
@@ -280,15 +288,21 @@ class NetMsg(nets.Net):
         hint_preds = invert(accum_mp_state.hint_preds)
 
         all_msgs = accum_mp_state.msgs
-        # shape: (num_steps, layers_per_hint = 1, num_samples, length, length, hidden_dim)
+        # shape: (num_steps, layers_per_hint = 1, num_samples, num_nodes, num_nodes, msg_dim)
+        all_msg_input = accum_mp_state.msg_input
+        # shape: (num_steps, layers_per_hint = 1, num_samples, num_nodes, num_nodes, 4*hidden_dim)
         
-        # note: following only works when layers_per_hint = 1
+        # note: the following only works when layers_per_hint = 1
+        
         all_msgs = all_msgs.squeeze()
-        # shape: (num_steps, num_samples, length, length, hidden_dim)
+        all_msg_input = all_msg_input.squeeze()
+        # shape: (num_steps, num_samples, num_nodes, num_nodes, ^)
+        
         all_msgs = jnp.transpose(all_msgs, (1, 0, 2, 3, 4))
-        # shape: (num_samples, num_steps, length, length, hidden_dim)
+        all_msg_input = jnp.transpose(all_msg_input, (1, 0, 2, 3, 4))
+        # shape: (num_samples, num_steps, num_nodes, num_nodes, ^)
 
-        return output_preds, hint_preds, all_msgs
+        return output_preds, hint_preds, all_msgs, all_msg_input
 
 
     def _one_step_pred(
@@ -336,8 +350,9 @@ class NetMsg(nets.Net):
         # PROCESS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         nxt_hidden = hidden
         msgs = None
+        msg_input = None
         for _ in range(self.nb_msg_passing_steps):
-            nxt_hidden, nxt_edge, nxt_msg = self.processor(
+            nxt_hidden, nxt_edge, nxt_msg, nxt_msg_input = self.processor(
                 node_fts,
                 edge_fts,
                 graph_fts,
@@ -348,9 +363,11 @@ class NetMsg(nets.Net):
             )
             if msgs is None:
                 msgs = jnp.expand_dims(nxt_msg, axis=0)
+                input_msg = jnp.expand_dims(nxt_msg_input, axis=0)
             else:
                 msgs = jnp.concatenate([msgs, nxt_msg], axis=0)
-
+                input_msg = jnp.concatenate([input_msg, next_input_msg], axis=0)
+        
         if not repred:      # dropout only on training
             nxt_hidden = hk.dropout(
                 hk.next_rng_key(), self._dropout_prob, nxt_hidden)
@@ -383,4 +400,4 @@ class NetMsg(nets.Net):
             repred=repred,
         )
 
-        return nxt_hidden, output_preds, hint_preds, nxt_lstm_state, msgs
+        return nxt_hidden, output_preds, hint_preds, nxt_lstm_state, msgs, input_msg

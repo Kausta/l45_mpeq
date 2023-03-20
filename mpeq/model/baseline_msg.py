@@ -47,6 +47,7 @@ class BaselineMsgModel(baselines.BaselineModel):
         dummy_trajectory: Union[List[_Feedback], _Feedback],
         processor_factory: processors.ProcessorFactory,
         hidden_dim: int = 32,
+        msg_dim: int = 32,
         encode_hints: bool = False,
         decode_hints: bool = True,
         encoder_init: str = 'default',
@@ -83,12 +84,16 @@ class BaselineMsgModel(baselines.BaselineModel):
         )
 
         self.l1_weight = l1_weight
+        self.msg_dim = msg_dim
+        self._create_net_fns2(hidden_dim, msg_dim, encode_hints, processor_factory, use_lstm,
+                         encoder_init, dropout_prob, hint_teacher_forcing,
+                         hint_repred_mode)
 
-    def _create_net_fns(self, hidden_dim, encode_hints, processor_factory,
+    def _create_net_fns2(self, hidden_dim, msg_dim, encode_hints, processor_factory,
                         use_lstm, encoder_init, dropout_prob,
                         hint_teacher_forcing, hint_repred_mode):
         def _use_net(*args, **kwargs):
-            return NetMsg(self._spec, hidden_dim, encode_hints, self.decode_hints,
+            return NetMsg(self._spec, hidden_dim, msg_dim, encode_hints, self.decode_hints,
                             processor_factory, use_lstm, encoder_init,
                             dropout_prob, hint_teacher_forcing,
                             hint_repred_mode,
@@ -116,7 +121,7 @@ class BaselineMsgModel(baselines.BaselineModel):
     def _predict(self, params, rng_key: hk.PRNGSequence, features: _Features,
                  algorithm_index: int, return_hints: bool,
                  return_all_outputs: bool):
-        outs, hint_preds, all_msgs = self.net_fn.apply(
+        outs, hint_preds, all_msgs, msg_input = self.net_fn.apply(
             params, rng_key, [features],
             repred=True, algorithm_index=algorithm_index,
             return_hints=return_hints,
@@ -127,11 +132,11 @@ class BaselineMsgModel(baselines.BaselineModel):
                                     sinkhorn_steps=50,
                                     hard=True,
                                     )
-        return outs, hint_preds, all_msgs
+        return outs, hint_preds, all_msgs, msg_input
 
     def _loss(self, params, rng_key, feedback, algorithm_index):
         """Calculates model loss f(feedback; params)."""
-        output_preds, hint_preds, all_msgs = self.net_fn.apply(
+        output_preds, hint_preds, all_msgs, _ = self.net_fn.apply(
             params, rng_key, [feedback.features],
             repred=False,
             algorithm_index=algorithm_index,
@@ -163,7 +168,7 @@ class BaselineMsgModel(baselines.BaselineModel):
         # old:
         # all_msgs.shape = (nlayers, nbatch, nnodes, nnodes, nmsg_dim)
         
-        # all_msgs.shape = (num_samples, num_steps, length, length, hidden_dim)
+        # all_msgs.shape = (num_samples, num_steps, length, length, msg_dim)
         # sum over all messages for a message passing step
         # mean over other dimensions
         total_loss += self.l1_weight * jnp.mean( 
