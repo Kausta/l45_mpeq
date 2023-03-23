@@ -121,7 +121,7 @@ class BaselineMsgModel(baselines.BaselineModel):
     def _predict(self, params, rng_key: hk.PRNGSequence, features: _Features,
                  algorithm_index: int, return_hints: bool,
                  return_all_outputs: bool):
-        outs, hint_preds, all_msgs, msg_input = self.net_fn.apply(
+        outs, hint_preds, all_msgs, input_msg, input_algo = self.net_fn.apply(
             params, rng_key, [features],
             repred=True, algorithm_index=algorithm_index,
             return_hints=return_hints,
@@ -132,11 +132,11 @@ class BaselineMsgModel(baselines.BaselineModel):
                                     sinkhorn_steps=50,
                                     hard=True,
                                     )
-        return outs, hint_preds, all_msgs, msg_input
+        return outs, hint_preds, all_msgs, input_msg, input_algo
 
     def _loss(self, params, rng_key, feedback, algorithm_index):
         """Calculates model loss f(feedback; params)."""
-        output_preds, hint_preds, all_msgs, _ = self.net_fn.apply(
+        output_preds, hint_preds, all_msgs, _, _ = self.net_fn.apply(
             params, rng_key, [feedback.features],
             repred=False,
             algorithm_index=algorithm_index,

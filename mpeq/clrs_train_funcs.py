@@ -159,7 +159,7 @@ def collect_and_eval(sampler, predict_fn, sample_count, rng_key, extras):
         new_rng_key, rng_key = jax.random.split(rng_key)
         # TODO: Can take messages here if required
         # see below
-        cur_preds, _, _, _ = predict_fn(new_rng_key, feedback.features)
+        cur_preds, _, _, _, _ = predict_fn(new_rng_key, feedback.features)
         preds.append(cur_preds)
         processed_samples += batch_size
     outputs = _concat(outputs, axis=0)
@@ -187,11 +187,14 @@ def get_msgs(sampler, predict_fn, sample_count, rng_key, sample_prob=0.001):
         feedback = next(sampler)
         batch_size = feedback.outputs[0].data.shape[0]
         new_rng_key, rng_key = jax.random.split(rng_key)
-        _, _, cur_msgs, cur_input_msg = predict_fn(new_rng_key, feedback.features)
+        _, _, cur_msgs, cur_input_msg, cur_input_algo = predict_fn(new_rng_key, feedback.features)
+        
+        print(cur_msgs.shape[-1], cur_input_msg.shape[-1], cur_input_algo.shape[-1])
         
         cur_msgs = cur_msgs.reshape(-1, cur_msgs.shape[-1])
         cur_input_msg = cur_input_msg.reshape(-1, cur_input_msg.shape[-1])
-        cur_msg_concat = jnp.concatenate((cur_msgs, cur_input_msg), axis=-1)
+        cur_input_algo = cur_input_algo.reshape(-1, cur_input_algo.shape[-1])
+        cur_msg_concat = jnp.concatenate((cur_msgs, cur_input_msg, cur_input_algo), axis=-1)
         
         new_rng_key, rng_key = jax.random.split(rng_key)
         mask = jax.random.choice(new_rng_key,

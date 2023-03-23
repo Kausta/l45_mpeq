@@ -16,6 +16,8 @@ import haiku as hk
 import jax
 import jax.numpy as jnp
 
+_Location = specs.Location
+
 __all__ = ["NetMsg"]
 
 @chex.dataclass
@@ -25,7 +27,8 @@ class _MessagePassingWithMsgScanState:
     hiddens: chex.Array
     lstm_state: Optional[hk.LSTMState]
     msgs: chex.Array
-    msg_input: chex.Array
+    input_msg: chex.Array
+    input_algo: chex.Array
 
 
 class NetMsg(nets.Net):
@@ -119,7 +122,7 @@ class NetMsg(nets.Net):
                     probing.DataPoint(
                         name=hint.name, location=loc, type_=typ, data=hint_data))
 
-        hiddens, output_preds_cand, hint_preds, lstm_state, msgs_state, input_msg_state = self._one_step_pred(
+        hiddens, output_preds_cand, hint_preds, lstm_state, msgs_state, input_msg_state, input_algo_state = self._one_step_pred(
             inputs, cur_hint, mp_state.hiddens,
             batch_size, nb_nodes, mp_state.lstm_state,
             spec, encs, decs, repred)
@@ -140,20 +143,25 @@ class NetMsg(nets.Net):
             hiddens=hiddens,
             lstm_state=lstm_state,
             msgs=msgs_state,
-            msg_input=input_msg_state)
+            input_msg=input_msg_state,
+            input_algo=input_algo_state
+            )
         # Save memory by not stacking unnecessary fields
         accum_mp_state = _MessagePassingWithMsgScanState(
             hint_preds=hint_preds if return_hints else None,
             output_preds=output_preds if return_all_outputs else None,
-            hiddens=None, lstm_state=None, msgs=msgs_state, msg_input=input_msg_state)
+            hiddens=None, lstm_state=None,
+            msgs=msgs_state, input_msg=input_msg_state, input_algo=input_algo_state)
         
         # ^ Note: could implement the following to save memory:
         # if repred:
         #     msgs = l1_norm(msgs_state)
-        #     msg_input = None
+        #     input_msg = None
+        #     input_algo = None
         # else:
         #     msgs = msgs_state
-        #     msg_input = msg_input_state
+        #     input_msg = input_msg_state
+        #     input_algo = input_algo_state
         
         # Complying to jax.scan, the first returned value is the state we carry over
         # the second value is the output that will be stacked over steps.
@@ -232,7 +240,7 @@ class NetMsg(nets.Net):
             mp_state = _MessagePassingWithMsgScanState(
                 hint_preds=None, output_preds=None,
                 hiddens=hiddens, lstm_state=lstm_state,
-                msgs=None, msg_input=None)
+                msgs=None, input_msg=None, input_algo=None)
 
             # Do the first step outside of the scan because it has a different
             # computation graph.
@@ -289,20 +297,24 @@ class NetMsg(nets.Net):
 
         all_msgs = accum_mp_state.msgs
         # shape: (num_steps, layers_per_hint = 1, num_samples, num_nodes, num_nodes, msg_dim)
-        all_msg_input = accum_mp_state.msg_input
+        all_input_msg = accum_mp_state.input_msg
         # shape: (num_steps, layers_per_hint = 1, num_samples, num_nodes, num_nodes, 4*hidden_dim)
+        all_input_algo = accum_mp_state.input_algo
+        # shape: (num_steps, layers_per_hint = 1, num_samples, num_nodes, num_nodes, num_input_feats)
         
         # note: the following only works when layers_per_hint = 1
         
         all_msgs = all_msgs.squeeze()
-        all_msg_input = all_msg_input.squeeze()
+        all_input_msg = all_input_msg.squeeze()
+        all_input_algo = all_input_algo.squeeze()
         # shape: (num_steps, num_samples, num_nodes, num_nodes, ^)
         
         all_msgs = jnp.transpose(all_msgs, (1, 0, 2, 3, 4))
-        all_msg_input = jnp.transpose(all_msg_input, (1, 0, 2, 3, 4))
+        all_input_msg = jnp.transpose(all_input_msg, (1, 0, 2, 3, 4))
+        all_input_algo = jnp.transpose(all_input_algo, (1, 0, 2, 3, 4))
         # shape: (num_samples, num_steps, num_nodes, num_nodes, ^)
 
-        return output_preds, hint_preds, all_msgs, all_msg_input
+        return output_preds, hint_preds, all_msgs, all_input_msg, all_input_algo
 
 
     def _one_step_pred(
@@ -332,27 +344,68 @@ class NetMsg(nets.Net):
         trajectories = [inputs]
         if self.encode_hints:
             trajectories.append(hints)
-
+        
+        def accum_input_algo(input_algo, new_input):
+            new_input = jnp.expand_dims(new_input, axis=-1)
+            if input_algo is None:
+                return new_input
+            else:
+                return jnp.concatenate((input_algo, new_input), axis=-1)
+        
+        input_algo = None
+        
         for trajectory in trajectories:
             for dp in trajectory:
-                try:
-                    dp = encoders.preprocess(dp, nb_nodes)
-                    assert dp.type_ != nets._Type.SOFT_POINTER
-                    adj_mat = encoders.accum_adj_mat(dp, adj_mat)
-                    encoder = encs[dp.name]
-                    edge_fts = encoders.accum_edge_fts(encoder, dp, edge_fts)
-                    node_fts = encoders.accum_node_fts(encoder, dp, node_fts)
-                    graph_fts = encoders.accum_graph_fts(
-                        encoder, dp, graph_fts)
-                except Exception as e:
-                    raise Exception(f'Failed to process {dp}') from e
-
+                # try:
+                #     dp = encoders.preprocess(dp, nb_nodes)
+                #     assert dp.type_ != nets._Type.SOFT_POINTER
+                #     adj_mat = encoders.accum_adj_mat(dp, adj_mat)
+                #     encoder = encs[dp.name]
+                #     edge_fts = encoders.accum_edge_fts(encoder, dp, edge_fts)
+                #     node_fts = encoders.accum_node_fts(encoder, dp, node_fts)
+                #     graph_fts = encoders.accum_graph_fts(encoder, dp, graph_fts)
+                #         
+                #     if dp.location == _Location.NODE:
+                #         node_input_1 = jnp.tile(jnp.expand_dims(dp.data, axis=1), reps=(1, nb_nodes, 1, 1))
+                #         node_input_2 = jnp.tile(jnp.expand_dims(dp.data, axis=2), reps=(1, 1, nb_nodes, 1))
+                #         input_algo = accum_input_algo(input_algo, node_input_1)
+                #         input_algo = accum_input_algo(input_algo, node_input_2)
+                #     elif dp.location == _Location.EDGE:
+                #         edge_input = dp.data
+                #         input_algo = accum_input_algo(input_algo, edge_input)
+                #     elif dp.location == _Location.GRAPH:
+                #         graph_input = np.tile(jnp.expand_dims(dp.data, axis=(1, 2)), reps=(1, nb_nodes, nb_nodes, 1))
+                #         input_algo = accum_input_algo(input_algo, graph_input)
+                #         
+                # except Exception as e:
+                #     raise Exception(f'Failed to process {dp}') from e
+                
+                if dp.location == _Location.NODE:
+                    node_input_1 = jnp.tile(jnp.expand_dims(dp.data, axis=1), reps=(1, nb_nodes, 1))
+                    node_input_2 = jnp.tile(jnp.expand_dims(dp.data, axis=2), reps=(1, 1, nb_nodes))
+                    input_algo = accum_input_algo(input_algo, node_input_1)
+                    input_algo = accum_input_algo(input_algo, node_input_2)
+                elif dp.location == _Location.EDGE:
+                    edge_input = dp.data
+                    input_algo = accum_input_algo(input_algo, edge_input)
+                elif dp.location == _Location.GRAPH:
+                    graph_input = jnp.tile(jnp.expand_dims(dp.data, axis=(1, 2)), reps=(1, nb_nodes, nb_nodes))
+                    input_algo = accum_input_algo(input_algo, graph_input)
+                
+                dp = encoders.preprocess(dp, nb_nodes)
+                assert dp.type_ != nets._Type.SOFT_POINTER
+                adj_mat = encoders.accum_adj_mat(dp, adj_mat)
+                encoder = encs[dp.name]
+                edge_fts = encoders.accum_edge_fts(encoder, dp, edge_fts)
+                node_fts = encoders.accum_node_fts(encoder, dp, node_fts)
+                graph_fts = encoders.accum_graph_fts(encoder, dp, graph_fts)
+                    
         # PROCESS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         nxt_hidden = hidden
         msgs = None
-        msg_input = None
+        input_msg = None
         for _ in range(self.nb_msg_passing_steps):
-            nxt_hidden, nxt_edge, nxt_msg, nxt_msg_input = self.processor(
+            nxt_hidden, nxt_edge, nxt_msg, nxt_input_msg = self.processor(
                 node_fts,
                 edge_fts,
                 graph_fts,
@@ -363,7 +416,7 @@ class NetMsg(nets.Net):
             )
             if msgs is None:
                 msgs = jnp.expand_dims(nxt_msg, axis=0)
-                input_msg = jnp.expand_dims(nxt_msg_input, axis=0)
+                input_msg = jnp.expand_dims(nxt_input_msg, axis=0)
             else:
                 msgs = jnp.concatenate([msgs, nxt_msg], axis=0)
                 input_msg = jnp.concatenate([input_msg, next_input_msg], axis=0)
@@ -400,4 +453,4 @@ class NetMsg(nets.Net):
             repred=repred,
         )
 
-        return nxt_hidden, output_preds, hint_preds, nxt_lstm_state, msgs, input_msg
+        return nxt_hidden, output_preds, hint_preds, nxt_lstm_state, msgs, input_msg, input_algo
