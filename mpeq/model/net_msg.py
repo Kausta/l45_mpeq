@@ -379,19 +379,22 @@ class NetMsg(nets.Net):
                 #         
                 # except Exception as e:
                 #     raise Exception(f'Failed to process {dp}') from e
-                
+                # print(dp.name, dp.data.shape, dp.location)
                 if dp.location == _Location.NODE:
                     node_input_1 = jnp.tile(jnp.expand_dims(dp.data, axis=1), reps=(1, nb_nodes, 1))
                     node_input_2 = jnp.tile(jnp.expand_dims(dp.data, axis=2), reps=(1, 1, nb_nodes))
                     input_algo = accum_input_algo(input_algo, node_input_1)
                     input_algo = accum_input_algo(input_algo, node_input_2)
+                    # print(input_algo.shape, "added node")
                 elif dp.location == _Location.EDGE:
                     edge_input = dp.data
                     input_algo = accum_input_algo(input_algo, edge_input)
+                    # print(input_algo.shape, "added edge")
                 elif dp.location == _Location.GRAPH:
                     graph_input = jnp.tile(jnp.expand_dims(dp.data, axis=(1, 2)), reps=(1, nb_nodes, nb_nodes))
                     input_algo = accum_input_algo(input_algo, graph_input)
-                
+                    # print(input_algo.shape, "added graph")
+
                 dp = encoders.preprocess(dp, nb_nodes)
                 assert dp.type_ != nets._Type.SOFT_POINTER
                 adj_mat = encoders.accum_adj_mat(dp, adj_mat)

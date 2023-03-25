@@ -100,7 +100,8 @@ class PGNWithMsg(processors.PGN):
     if self.mid_act is not None:
       msgs = self.mid_act(msgs)
 
-    exported_msgs = msgs
+    # 0 out non adjacent, based on the reduction below
+    exported_msgs = msgs * jnp.expand_dims(adj_mat, -1)
 
     if self.reduction == jnp.mean:
       msgs = jnp.sum(msgs * jnp.expand_dims(adj_mat, -1), axis=1)
