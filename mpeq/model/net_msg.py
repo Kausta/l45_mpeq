@@ -306,19 +306,19 @@ class NetMsg(nets.Net):
         # shape: (num_steps, layers_per_hint = 1, num_samples, num_nodes, num_nodes, 4*hidden_dim)
         all_input_algo = accum_mp_state.input_algo
         # shape: (num_steps, layers_per_hint = 1, num_samples, num_nodes, num_nodes, num_input_feats)
-        
-        # note: the following only works when layers_per_hint = 1
-        
+            
         all_msgs = all_msgs.squeeze()
-        all_input_msg = all_input_msg.squeeze()
-        all_input_algo = all_input_algo.squeeze()
-        # shape: (num_steps, num_samples, num_nodes, num_nodes, ^)
-        
+        # shape: (num_steps, num_samples, num_nodes, num_nodes, msg_dim)
         all_msgs = jnp.transpose(all_msgs, (1, 0, 2, 3, 4))
-        all_input_msg = jnp.transpose(all_input_msg, (1, 0, 2, 3, 4))
-        all_input_algo = jnp.transpose(all_input_algo, (1, 0, 2, 3, 4))
-        # shape: (num_samples, num_steps, num_nodes, num_nodes, ^)
-
+        # shape: (num_samples, num_steps, num_nodes, num_nodes, msg_dim)
+        
+        if not repred:
+            all_input_msg = all_input_msg.squeeze()
+            all_input_algo = all_input_algo.squeeze()
+            
+            all_input_msg = jnp.transpose(all_input_msg, (1, 0, 2, 3, 4))
+            all_input_algo = jnp.transpose(all_input_algo, (1, 0, 2, 3, 4))
+        
         return output_preds, hint_preds, all_msgs, all_input_msg, all_input_algo
 
 
