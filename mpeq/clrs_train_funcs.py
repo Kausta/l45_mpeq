@@ -117,7 +117,10 @@ def make_sampler(length: int,
         sampler = _iterate_sampler(sampler, batch_size)
 
     if randomize_pos:
+        print(f"Using randomized pos for split {split}")
         sampler = clrs.process_random_pos(sampler, rng)
+    else:
+        print(f"Not! using randomized pos for split {split}")
     if enforce_pred_as_input and algorithm in PRED_AS_INPUT_ALGOS:
         spec, sampler = clrs.process_pred_as_input(spec, sampler)
     spec, sampler = clrs.process_permutations(
@@ -170,7 +173,7 @@ def collect_and_eval(sampler, predict_fn, sample_count, rng_key, extras):
     return {k: unpack(v) for k, v in out.items()}
 
 
-def get_msgs(sampler, predict_fn, sample_count, rng_key, sample_prob=0.001):
+def get_msgs(sampler, predict_fn, sample_count, rng_key, criteria, sample_prob=0.001, threshold_max_elem=0.001):
     """Get messages from model.
     
     CAUTION: size of msgs can get large very quickly, so beware when
@@ -189,13 +192,27 @@ def get_msgs(sampler, predict_fn, sample_count, rng_key, sample_prob=0.001):
         new_rng_key, rng_key = jax.random.split(rng_key)
         _, _, cur_msgs, cur_input_msg, cur_input_algo = predict_fn(new_rng_key, feedback.features)
         
-        print(cur_msgs.shape[-1], cur_input_msg.shape[-1], cur_input_algo.shape[-1])
+        print(cur_msgs.shape, cur_msgs.shape[-1], cur_input_msg.shape[-1], cur_input_algo.shape[-1])
         
         cur_msgs = cur_msgs.reshape(-1, cur_msgs.shape[-1])
         cur_input_msg = cur_input_msg.reshape(-1, cur_input_msg.shape[-1])
         cur_input_algo = cur_input_algo.reshape(-1, cur_input_algo.shape[-1])
         cur_msg_concat = jnp.concatenate((cur_msgs, cur_input_msg, cur_input_algo), axis=-1)
         
+        N = cur_msg_concat.shape[0]
+        max_element_mask = jnp.max(jnp.abs(cur_msgs), axis=1) > threshold_max_elem
+        print("Thresholding:", jnp.sum(max_element_mask), "of", N)
+        cur_msg_concat = cur_msg_concat[max_element_mask]
+
+        if criteria is not None:
+            crit_mask = criteria(cur_msg_concat)
+            print("Criteria thresholding:", jnp.sum(crit_mask), "of", N)
+            cur_msg_concat = cur_msg_concat[crit_mask]
+
+        # sampled_rate = jnp.sum(max_element_mask) / cur_msg_concat.shape[0]
+        # new_sample_prob = max(1., sample_prob / sampled_rate)
+        # print("New sample prob:", new_sample_prob)
+
         new_rng_key, rng_key = jax.random.split(rng_key)
         mask = jax.random.choice(new_rng_key,
                                  a=jnp.array([False, True]),
@@ -203,6 +220,7 @@ def get_msgs(sampler, predict_fn, sample_count, rng_key, sample_prob=0.001):
                                  p=jnp.array([1 - sample_prob, sample_prob]),
                                  replace=True,)
         cur_msg_concat = cur_msg_concat[mask]
+        print("Random sampling:", cur_msg_concat.shape[0], "of", N)
         
         msgs.append(cur_msg_concat)
         processed_samples += batch_size

@@ -7,13 +7,12 @@ from pysr import PySRRegressor
 import sympy
 # import subprocess
 
+
 N_messages_all = 2000
-N_messages_input_only = 2000
 N_best = 5
 
-MSG, MSG_INPUT, ALGO_INPUT = 32, 512, 13
-ALGO_INPUT_IMPORTANT = [0,1,2,3,4]
-VARIABLE_NAMES = ["p1", "p2", "k1", "k2", "t", "ph1", "ph2", "l1", "l2", "h1", "h2", "m1", "m2"]
+MSG, MSG_INPUT, ALGO_INPUT = 32, 512, 12
+VARIABLE_NAMES = ["p1", "p2", "k1", "k2", "t", "ph", "l1", "l2", "h1", "h2", "m1", "m2"]
 
 take_only_nonzero, nz_thresh = True, 1e-2
 
@@ -64,24 +63,6 @@ def get_model():
     )
     return model
 
-print("Only important inputs")
-# Largest std vs inputs
-X_full = algo_inputs[:,ALGO_INPUT_IMPORTANT]
-y_full = msgs[:,best_N_idx[0]]
-
-if take_only_nonzero:
-    nonzero = np.abs(y_full) > nz_thresh
-    X_full = X_full[nonzero]
-    y_full = y_full[nonzero]
-
-idxs = np.random.choice(np.arange(X_full.shape[0]), size=N_messages_input_only, replace=False)
-
-X = X_full[idxs,:]
-y = y_full[idxs]
-
-model = get_model()
-model.fit(X, y, variable_names=[VARIABLE_NAMES[i] for i in ALGO_INPUT_IMPORTANT])
-print(model)
 
 print("All inputs")
 # Largest std vs inputs
@@ -102,20 +83,5 @@ model = get_model()
 model.fit(X, y, variable_names=VARIABLE_NAMES)
 print(model)
 
-
-exit()
-
-# Using only messages
-X_full = msgs[:,best_N_idx[1:]]
-y_full = msgs[:,best_N_idx[0]]
-
-idxs = np.random.choice(np.arange(X_full.shape[0]), size=N_messages, replace=False)
-
-X = X_full[idxs,:]
-y = y_full[idxs]
-
-model = get_model()
-model.fit(X, y)
-print(model)
 # print(model.latex_table())
 # subprocess.run("pbcopy", text=True, input=model.latex_table())
