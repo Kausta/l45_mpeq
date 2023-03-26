@@ -154,8 +154,8 @@ class NetMsg(nets.Net):
             hiddens=None,
             lstm_state=None,
             msgs=msgs_state,
-            input_msg=input_msg_state if not repred else None,
-            input_algo=input_algo_state if not repred else None,
+            input_msg=input_msg_state if repred else None,
+            input_algo=input_algo_state if repred else None,
         )
         
         # ^ Note: could implement the following to save memory:
@@ -312,7 +312,7 @@ class NetMsg(nets.Net):
         all_msgs = jnp.transpose(all_msgs, (1, 0, 2, 3, 4))
         # shape: (num_samples, num_steps, num_nodes, num_nodes, msg_dim)
         
-        if not repred:
+        if repred:
             all_input_msg = all_input_msg.squeeze()
             all_input_algo = all_input_algo.squeeze()
             
