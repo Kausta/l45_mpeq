@@ -144,14 +144,18 @@ class NetMsg(nets.Net):
             lstm_state=lstm_state,
             msgs=msgs_state,
             input_msg=input_msg_state,
-            input_algo=input_algo_state
-            )
+            input_algo=input_algo_state,
+        )
         # Save memory by not stacking unnecessary fields
         accum_mp_state = _MessagePassingWithMsgScanState(
             hint_preds=hint_preds if return_hints else None,
             output_preds=output_preds if return_all_outputs else None,
-            hiddens=None, lstm_state=None,
-            msgs=msgs_state, input_msg=input_msg_state, input_algo=input_algo_state)
+            hiddens=None,
+            lstm_state=None,
+            msgs=msgs_state,
+            input_msg=input_msg_state if not repred else None,
+            input_algo=input_algo_state if not repred else None,
+        )
         
         # ^ Note: could implement the following to save memory:
         # if repred:
