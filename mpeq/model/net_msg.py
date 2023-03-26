@@ -62,6 +62,7 @@ class NetMsg(nets.Net):
                          name=name)
                          
         self.msg_dim = msg_dim
+        self._print_inputs = False
 
     def _msg_passing_step(self,
                           mp_state: _MessagePassingWithMsgScanState,
@@ -379,30 +380,49 @@ class NetMsg(nets.Net):
                 #         
                 # except Exception as e:
                 #     raise Exception(f'Failed to process {dp}') from e
-                # print(dp.name, dp.data.shape, dp.location)
-                if dp.location == _Location.NODE:
+
+                dp = encoders.preprocess(dp, nb_nodes)
+
+                if self._print_inputs:
+                    print(dp.name, dp.data.shape, dp.location, dp.type_)
+
+                is_pointer = (dp.type_ in [nets._Type.POINTER, nets._Type.PERMUTATION_POINTER])
+                if ((dp.location == _Location.NODE and not is_pointer) or
+                    (dp.location == _Location.GRAPH and dp.type_ == nets._Type.POINTER)):
                     node_input_1 = jnp.tile(jnp.expand_dims(dp.data, axis=1), reps=(1, nb_nodes, 1))
                     node_input_2 = jnp.tile(jnp.expand_dims(dp.data, axis=2), reps=(1, 1, nb_nodes))
                     input_algo = accum_input_algo(input_algo, node_input_1)
                     input_algo = accum_input_algo(input_algo, node_input_2)
-                    # print(input_algo.shape, "added node")
-                elif dp.location == _Location.EDGE:
+                    if self._print_inputs:
+                        print(input_algo.shape, "added 2 node features")
+                elif dp.location == _Location.NODE and is_pointer:
                     edge_input = dp.data
                     input_algo = accum_input_algo(input_algo, edge_input)
-                    # print(input_algo.shape, "added edge")
-                elif dp.location == _Location.GRAPH:
+                    if self._print_inputs:
+                        print(input_algo.shape, "added edge features (node pointer)")
+                elif dp.location == _Location.EDGE:
+                    if dp.type_ == nets._Type.POINTER:
+                        raise NotImplementedError("Edge pointers are not implemented yet")
+                        if self._print_inputs:
+                            print(input_algo.shape, "added edge features (edge pointer)")
+                    else:
+                        edge_input = dp.data
+                        input_algo = accum_input_algo(input_algo, edge_input)
+                        if self._print_inputs:
+                            print(input_algo.shape, "added edge features")
+                elif dp.location == _Location.GRAPH and dp.type_ != nets._Type.POINTER:
                     graph_input = jnp.tile(jnp.expand_dims(dp.data, axis=(1, 2)), reps=(1, nb_nodes, nb_nodes))
                     input_algo = accum_input_algo(input_algo, graph_input)
-                    # print(input_algo.shape, "added graph")
+                    if self._print_inputs:
+                        print(input_algo.shape, "added graph features")
 
-                dp = encoders.preprocess(dp, nb_nodes)
                 assert dp.type_ != nets._Type.SOFT_POINTER
                 adj_mat = encoders.accum_adj_mat(dp, adj_mat)
                 encoder = encs[dp.name]
                 edge_fts = encoders.accum_edge_fts(encoder, dp, edge_fts)
                 node_fts = encoders.accum_node_fts(encoder, dp, node_fts)
                 graph_fts = encoders.accum_graph_fts(encoder, dp, graph_fts)
-                    
+
         # PROCESS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         nxt_hidden = hidden
         msgs = None
