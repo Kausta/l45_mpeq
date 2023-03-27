@@ -13,6 +13,7 @@ N_best = 5
 
 MSG, MSG_INPUT, ALGO_INPUT = 32, 512, 12
 VARIABLE_NAMES = ["p1", "p2", "k1", "k2", "t", "ph", "l1", "l2", "h1", "h2", "m1", "m2"]
+IGNORE_VARIABLES = [0, 1]
 
 take_only_nonzero, nz_thresh = True, 1e-2
 
@@ -26,6 +27,11 @@ msgs = batched_msgs[:,:MSG]
 msgs_inputs = batched_msgs[:,MSG:(MSG+MSG_INPUT)]
 algo_inputs = batched_msgs[:,(MSG+MSG_INPUT):]
 print(msgs.shape, msgs_inputs.shape, algo_inputs.shape)
+
+variables_to_keep = [x for x in range(ALGO_INPUT) if x not in IGNORE_VARIABLES]
+VARIABLE_NAMES = [VARIABLE_NAMES[i] for i in variables_to_keep]
+algo_inputs = algo_inputs[:, variables_to_keep]
+ALGO_INPUT = len(variables_to_keep)
 
 std_devs = np.array([np.std(msgs[:,i]) for i in range(msgs.shape[1])])
 print(std_devs)
