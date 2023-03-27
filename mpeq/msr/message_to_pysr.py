@@ -11,9 +11,12 @@ import sympy
 N_messages_all = 2000
 N_best = 5
 
-MSG, MSG_INPUT, ALGO_INPUT = 32, 512, 12
+MSG, ALGO_INPUT = 32, 12
 VARIABLE_NAMES = ["p1", "p2", "k1", "k2", "t", "ph", "l1", "l2", "h1", "h2", "m1", "m2"]
 IGNORE_VARIABLES = [0, 1]
+
+def criteria(algo_inputs):
+    return np.bitwise_or(algo_inputs[:, -1] == 1, algo_inputs[:, -2] == 1)
 
 take_only_nonzero, nz_thresh = True, 1e-2
 
@@ -21,12 +24,17 @@ file_name = 'binary_search_val_msgs.pkl'
 with open(file_name, 'rb') as f:
     batched_msgs = pkl.load(f)
 
-assert batched_msgs.shape[1] == MSG + MSG_INPUT + ALGO_INPUT
+assert batched_msgs.shape[1] == MSG + ALGO_INPUT
 
 msgs = batched_msgs[:,:MSG]
-msgs_inputs = batched_msgs[:,MSG:(MSG+MSG_INPUT)]
-algo_inputs = batched_msgs[:,(MSG+MSG_INPUT):]
-print(msgs.shape, msgs_inputs.shape, algo_inputs.shape)
+algo_inputs = batched_msgs[:,MSG:]
+print(msgs.shape, algo_inputs.shape)
+
+print("Applying criteria")
+mask = criteria(algo_inputs)
+print(f"Keeping {np.sum(mask)} of {msgs.shape[0]}")
+msgs = msgs[mask]
+algo_inputs = algo_inputs[mask]
 
 variables_to_keep = [x for x in range(ALGO_INPUT) if x not in IGNORE_VARIABLES]
 VARIABLE_NAMES = [VARIABLE_NAMES[i] for i in variables_to_keep]
