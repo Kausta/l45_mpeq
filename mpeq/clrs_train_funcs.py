@@ -193,7 +193,7 @@ def get_msgs(sampler, predict_fn, sample_count, rng_key, criteria=None, sample_p
         _, _, cur_msgs, _, cur_input_algo = predict_fn(new_rng_key, feedback.features)
         cur_msgs, cur_input_algo = np.array(cur_msgs), np.array(cur_input_algo)
 
-        print(cur_msgs.shape, cur_msgs.shape[-1], cur_input_algo.shape[-1])
+        # print(cur_msgs.shape, cur_msgs.shape[-1], cur_input_algo.shape[-1])
         
         nb_nodes = cur_msgs.shape[-2]
         self_loop_mask = 1. - np.eye(nb_nodes).reshape(1, 1, nb_nodes, nb_nodes, 1)
@@ -210,7 +210,7 @@ def get_msgs(sampler, predict_fn, sample_count, rng_key, criteria=None, sample_p
 
         if criteria is not None:
             crit_mask = criteria(cur_msg_concat)
-            print("Criteria thresholding:", np.sum(crit_mask), "of", N)
+            # print("Criteria thresholding:", np.sum(crit_mask), "of", N)
             cur_msg_concat = cur_msg_concat[crit_mask]
 
         # sampled_rate = jnp.sum(max_element_mask) / cur_msg_concat.shape[0]
