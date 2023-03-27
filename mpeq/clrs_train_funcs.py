@@ -191,7 +191,7 @@ def get_msgs(sampler, predict_fn, sample_count, rng_key, criteria=None, sample_p
         batch_size = feedback.outputs[0].data.shape[0]
         new_rng_key, rng_key = jax.random.split(rng_key)
         _, _, cur_msgs, _, cur_input_algo = predict_fn(new_rng_key, feedback.features)
-        cur_msgs, _, cur_input_algo = np.array(cur_msgs), np.array(cur_input_algo)
+        cur_msgs, cur_input_algo = np.array(cur_msgs), np.array(cur_input_algo)
 
         print(cur_msgs.shape, cur_msgs.shape[-1], cur_input_algo.shape[-1])
         
